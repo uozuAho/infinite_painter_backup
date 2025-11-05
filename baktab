@@ -1,0 +1,60 @@
+#!/bin/python3
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+
+def sync(src: Path, dest: Path):
+  rsync_cmd = [
+    "rsync",
+    "-av",
+    "--exclude=playback",
+    "--exclude=Last Save",
+    "--exclude=archives",
+    "--exclude=corrections",
+    str(src),
+    str(dest),
+  ]
+  subprocess.run(rsync_cmd, check=True)
+
+
+def todirmap(projects_json_path) -> dict[str, Path]:
+  def rec(items, parentdir: Path, m: dict):
+    for item in items:
+      if "project" in item and "name" not in item:
+        m[item["project"]] = parentdir
+      elif "name" in item and "project-folder" in item:
+        rec(item["project-folder"], parentdir / item["name"], m)
+    return m
+
+  with open(projects_json_path, "r") as infile:
+    pj = json.load(infile)
+    return rec(pj["projects"], Path(""), {})
+
+
+def projname(projdir: Path) -> str:
+  with open(projdir / "project.json") as infile:
+    p = json.load(infile)
+    return p["name"] if p["name"] != "Project" else projdir.name
+
+
+def mklinks(target_root: Path, links_root: Path, dirmap: dict[str, Path]):
+  for x in target_root.iterdir():
+    if x.is_dir():
+      name = projname(x)
+      link = links_root / dirmap[x.name] / name
+      if not link.exists():
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(x, target_is_directory=True)
+        link.with_name(link.name + "-preview").symlink_to(x / "preview")
+
+
+if __name__ == "__main__":
+  source = Path(sys.argv[1])
+  destroot = Path(sys.argv[2])
+  destsync = destroot / source.name
+  destlinks = destroot / "links"
+  sync(source, destroot)
+  dirmap = todirmap(destsync / "projects.json")
+  mklinks(destsync, destlinks, dirmap)
