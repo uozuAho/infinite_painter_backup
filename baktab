@@ -5,17 +5,20 @@ import subprocess
 import sys
 
 
-def sync(src: Path, dest: Path):
+def sync(src: Path, dest: Path, delete=True, dryrun=False):
   rsync_cmd = [
     "rsync",
     "-av",
     "--exclude=playback",
     "--exclude=Last Save",
     "--exclude=archives",
-    "--exclude=corrections",
-    str(src),
-    str(dest),
+    "--exclude=corrections"
   ]
+  if delete:
+    rsync_cmd += ['--delete']
+  if dryrun:
+    rsync_cmd += ["--dry-run"]
+  rsync_cmd += [str(src), str(dest)]
   subprocess.run(rsync_cmd, check=True)
 
 
@@ -53,8 +56,10 @@ def mklinks(target_root: Path, links_root: Path, dirmap: dict[str, Path]):
 if __name__ == "__main__":
   source = Path(sys.argv[1])
   destroot = Path(sys.argv[2])
+  is_dry_run = "--dry-run" in sys.argv
   destsync = destroot / source.name
   destlinks = destroot / "links"
-  sync(source, destroot)
-  dirmap = todirmap(destsync / "projects.json")
-  mklinks(destsync, destlinks, dirmap)
+  sync(source, destroot, delete=True, dryrun=is_dry_run)
+  if not is_dry_run:
+    dirmap = todirmap(destsync / "projects.json")
+    mklinks(destsync, destlinks, dirmap)
